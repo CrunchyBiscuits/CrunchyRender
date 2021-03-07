@@ -16,15 +16,20 @@ Vec3f    center(0, 0, 0);
 Vec3f        up(0, 1, 0);
 
 struct GouraudShader : public IShader {
-    Vec3f varying_intensity; // written by vertex shader, read by fragment shader
+    // 通过顶点shader进行变换，最后传给片元shader
+    Vec3f varying_intensity; 
 
     virtual Vec4f vertex(int iface, int nthvert) {
-        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
-        gl_Vertex = Viewport * Projection * ModelView * gl_Vertex;     // transform it to screen coordinates
-        varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert) * light_dir); // get diffuse lighting intensity
+        // 来自tinyrenderer，读取object相关的数据
+        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert));
+        // MVP矩阵变换转换到屏幕
+        gl_Vertex = Viewport * Projection * ModelView * gl_Vertex;
+        // 获取漫反射强度
+        varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert) * light_dir);
         return gl_Vertex;
     }
 
+    // 片元shader，这里是根据不同的强度进行的一个粗暴的转换
     virtual bool fragment(Vec3f bar, TGAColor& color) {
         float intensity = varying_intensity * bar;
         if (intensity > .85) intensity = 1;
@@ -43,17 +48,20 @@ struct Shader : public IShader {
     mat<4, 4, float> uniform_M;   //  Projection*ModelView
     mat<4, 4, float> uniform_MIT; // (Projection*ModelView).invert_transpose()
 
+    // 顶点shader的作用，主要就是MVP
     virtual Vec4f vertex(int iface, int nthvert) {
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
-        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert)); // read the vertex from .obj file
-        return Viewport * Projection * ModelView * gl_Vertex; // transform it to screen coordinates
+        Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert));
+        return Viewport * Projection * ModelView * gl_Vertex;
     }
 
+    // 片元shader主要任务，着色
     virtual bool fragment(Vec3f bar, TGAColor& color) {
         Vec2f uv = varying_uv * bar;
         Vec3f n = proj<3>(uniform_MIT * embed<4>(model->normal(uv))).normalize();
         Vec3f l = proj<3>(uniform_M * embed<4>(light_dir)).normalize();
-        Vec3f r = (n * (n * l * 2.f) - l).normalize();   // reflected light
+        // 反射光
+        Vec3f r = (n * (n * l * 2.f) - l).normalize();
         float spec = pow(std::max(r.z, 0.0f), model->specular(uv));
         float diff = std::max(0.f, n * l);
         TGAColor c = model->diffuse(uv);
@@ -79,7 +87,7 @@ int main(int argc, char** argv) {
     TGAImage image(width, height, TGAImage::RGB);
     TGAImage zbuffer(width, height, TGAImage::GRAYSCALE);
 
-    // GouraudShader shader;
+    // phong shader;
     Shader shader;
     shader.uniform_M = Projection * ModelView;
     shader.uniform_MIT = (Projection * ModelView).invert_transpose();
@@ -91,7 +99,8 @@ int main(int argc, char** argv) {
         triangle(screen_coords, shader, image, zbuffer);
     }
 
-    image.flip_vertically(); // to place the origin in the bottom left corner of the image
+    // 设置左下为起始点
+    image.flip_vertically(); 
     zbuffer.flip_vertically();
     image.write_tga_file("output.tga");
     zbuffer.write_tga_file("zbuffer.tga");
