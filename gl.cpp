@@ -64,20 +64,52 @@ void triangle(Vec4f* pts, IShader& shader, TGAImage& image, TGAImage& zbuffer) {
     }
     Vec2i P;
     TGAColor color;
-    // 深度缓冲的更新
-    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++) {
-        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++) {
-            Vec3f c = barycentric(proj<2>(pts[0] / pts[0][3]), proj<2>(pts[1] / pts[1][3]), proj<2>(pts[2] / pts[2][3]), proj<2>(P));
-            float z = pts[0][2] * c.x + pts[1][2] * c.y + pts[2][2] * c.z;
-            float w = pts[0][3] * c.x + pts[1][3] * c.y + pts[2][3] * c.z;
-            int frag_depth = std::max(0, std::min(255, int(z / w + .5)));
-            // 提前判断是否需要进行深度缓冲的更新，不行就直接continue
-            if (c.x < 0 || c.y < 0 || c.z<0 || zbuffer.get(P.x, P.y)[0]>frag_depth) continue;
-            bool discard = shader.fragment(c, color);
-            if (!discard) {
-                zbuffer.set(P.x, P.y, TGAColor(frag_depth));
-                image.set(P.x, P.y, color);
-            }
+    Vec3f* v;
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 3; j++)
+        {
+            v[i][j] = pts[i][j];
         }
     }
+    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++) {
+        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++) {
+            float percent = insideTrianglePercent(P.x, P.y, v, 4);
+            if (percent > 0) {
+                Vec3f c = barycentric(proj<2>(pts[0] / pts[0][3]), proj<2>(pts[1] / pts[1][3]), proj<2>(pts[2] / pts[2][3]), proj<2>(P));
+                float z = pts[0][2] * c.x + pts[1][2] * c.y + pts[2][2] * c.z;
+                float w = pts[0][3] * c.x + pts[1][3] * c.y + pts[2][3] * c.z;
+                int frag_depth = std::max(0, std::min(255, int(z / w + .5)));
+                if (c.x < 0 || c.y < 0 || c.z<0 || zbuffer.get(P.x, P.y)[0]>frag_depth) continue;
+                bool discard = shader.fragment(c, color);
+                // 深度缓冲判定
+                if (!discard) {
+                    zbuffer.set(P.x, P.y, TGAColor(frag_depth));
+                    image.set(P.x, P.y, color);
+                }
+            }
+
+        }
+    }
+
+}
+
+float insideTrianglePercent(int x, int y, const Vec3f* _v, int density) {
+    float percent = 0;
+    float step = sqrt(density);
+
+    // 计算每个采样点的位置参数
+    float fragment_spacing = 1.0 / step;
+    float margin = fragment_spacing / 2;
+    float weight = 1.0 / density;
+
+    for (int i = 0; i < step; i++) {
+        for (int j = 0; j < step; j++)
+        {
+            percent += insideTriangle(x + margin + fragment_spacing * i,
+                y + margin + fragment_spacing * j, _v) * weight;
+        }
+
+    }
+    return percent;
 }

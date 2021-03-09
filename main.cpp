@@ -15,6 +15,7 @@ Vec3f       eye(1, 1, 6);
 Vec3f    center(0, 0, 0);
 Vec3f        up(0, 1, 0);
 
+// 高露德shader逐顶点的进行渲染
 struct GouraudShader : public IShader {
     // 通过顶点shader进行变换，最后传给片元shader
     Vec3f varying_intensity; 
@@ -24,7 +25,7 @@ struct GouraudShader : public IShader {
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert));
         // MVP矩阵变换转换到屏幕
         gl_Vertex = Viewport * Projection * ModelView * gl_Vertex;
-        // 获取漫反射强度
+        // 获取漫反射强度，这里只有漫反射
         varying_intensity[nthvert] = std::max(0.f, model->normal(iface, nthvert) * light_dir);
         return gl_Vertex;
     }
@@ -50,8 +51,10 @@ struct Shader : public IShader {
 
     // 顶点shader的作用，主要就是MVP
     virtual Vec4f vertex(int iface, int nthvert) {
+        // 这里来自tinyRenderer
         varying_uv.set_col(nthvert, model->uv(iface, nthvert));
         Vec4f gl_Vertex = embed<4>(model->vert(iface, nthvert));
+        // 将顶点转换到裁剪空间
         return Viewport * Projection * ModelView * gl_Vertex;
     }
 
@@ -60,17 +63,20 @@ struct Shader : public IShader {
         Vec2f uv = varying_uv * bar;
         Vec3f n = proj<3>(uniform_MIT * embed<4>(model->normal(uv))).normalize();
         Vec3f l = proj<3>(uniform_M * embed<4>(light_dir)).normalize();
-        // 反射光
+        // 反射方向计算
         Vec3f r = (n * (n * l * 2.f) - l).normalize();
+        // 高光计算
         float spec = pow(std::max(r.z, 0.0f), model->specular(uv));
+        // 漫反射计算
         float diff = std::max(0.f, n * l);
+        // 颜色值
         TGAColor c = model->diffuse(uv);
         color = c;
         for (int i = 0; i < 3; i++) color[i] = std::min<float>(5 + c[i] * (diff + .6 * spec), 255);
         return false;
     }
 };
-
+/*
 int main(int argc, char** argv) {
     if (2 == argc) {
         model = new Model(argv[1]);
@@ -107,4 +113,4 @@ int main(int argc, char** argv) {
 
     delete model;
     return 0;
-}
+}*/
